@@ -119,27 +119,30 @@ func captureEmbeddingRequest(t *testing.T, es *store.EmbeddingSettings) map[stri
 	if ep == nil {
 		t.Fatal("buildEmbeddingProvider() = nil, want provider")
 	}
-	if _, err := ep.Embed(context.Background(), []string{"hello"}); err != nil {
+	if _, err := ep.Embed(context.Background(), []string{"hello"}, ""); err != nil {
 		t.Fatalf("Embed() error = %v", err)
 	}
 	return requestBody
 }
 
-func TestBuildEmbeddingProviderDefaultsTo1536Dimensions(t *testing.T) {
+func TestBuildEmbeddingProviderDefaultsToSchemaDimensions(t *testing.T) {
+	want := float64(store.RequiredMemoryEmbeddingDimensions)
 	requestBody := captureEmbeddingRequest(t, nil)
-	if got := requestBody["dimensions"]; got != float64(1536) {
-		t.Fatalf("dimensions = %v, want 1536", got)
+	if got := requestBody["dimensions"]; got != want {
+		t.Fatalf("dimensions = %v, want %v", got, want)
 	}
 }
 
 func TestBuildEmbeddingProviderIgnoresIncompatibleStoredDimensions(t *testing.T) {
+	want := float64(store.RequiredMemoryEmbeddingDimensions)
 	requestBody := captureEmbeddingRequest(t, &store.EmbeddingSettings{
-		Enabled:    true,
-		Model:      "voyage-4-nano",
-		Dimensions: 2048,
+		Enabled: true,
+		Model:   "voyage-4-nano",
+		// Deliberately a width the schema cannot hold.
+		Dimensions: store.RequiredMemoryEmbeddingDimensions / 2,
 	})
-	if got := requestBody["dimensions"]; got != float64(1536) {
-		t.Fatalf("dimensions = %v, want fallback 1536", got)
+	if got := requestBody["dimensions"]; got != want {
+		t.Fatalf("dimensions = %v, want fallback %v", got, want)
 	}
 }
 

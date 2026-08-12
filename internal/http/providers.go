@@ -47,6 +47,7 @@ type ProvidersHandler struct {
 	agents          store.AgentCRUDStore    // optional: for provider pool activity agent lookup
 	modelReg        providers.ModelRegistry // optional: forward-compat model resolver for Anthropic
 	usageCaps       *usagecaps.Service
+	resolvedDims    int // effective embedding dimensions from MemoryConfig (0 = schema width)
 }
 
 // NewProvidersHandler creates a handler for provider management endpoints.
@@ -63,6 +64,14 @@ func (h *ProvidersHandler) SetMessageBus(msgBus *bus.MessageBus) {
 // SetSystemConfigStore sets the system config store for embedding status checks.
 func (h *ProvidersHandler) SetSystemConfigStore(s store.SystemConfigStore) {
 	h.sysConfigStore = s
+}
+
+// SetResolvedEmbeddingDimensions sets the effective embedding dimensions from MemoryConfig.
+// Must be called before serving requests (not thread-safe).
+func (h *ProvidersHandler) SetResolvedEmbeddingDimensions(dims int) {
+	if dims > 0 {
+		h.resolvedDims = dims
+	}
 }
 
 // SetMCPServerLookup sets the per-agent MCP server lookup for Claude CLI providers.
@@ -649,7 +658,7 @@ func (h *ProvidersHandler) handleCreateProvider(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if err := validateProviderEmbeddingSettings(&p); err != nil {
+	if err := validateProviderEmbeddingSettings(&p, h.resolvedDims); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgInvalidRequest, err.Error())})
 		return
 	}
@@ -857,7 +866,7 @@ func (h *ProvidersHandler) handleUpdateProvider(w http.ResponseWriter, r *http.R
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if err := validateProviderEmbeddingSettings(&candidate); err != nil {
+	if err := validateProviderEmbeddingSettings(&candidate, h.resolvedDims); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": i18n.T(locale, i18n.MsgInvalidRequest, err.Error())})
 		return
 	}

@@ -100,7 +100,7 @@ func TestGitAdapter_SSH_TmpfileLifecycle(t *testing.T) {
 	// observe GIT_SSH_COMMAND propagation. We don't run real git — the
 	// adapter's contract is "env reaches child", which is provable without
 	// involving git's transport layer.
-	env := append(os.Environ())
+	env := os.Environ()
 	for k, v := range inj.Env {
 		env = append(env, k+"="+v)
 	}

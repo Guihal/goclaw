@@ -22,7 +22,7 @@ func TestOpenAIEmbeddingProviderRestoresResponseOrder(t *testing.T) {
 	defer server.Close()
 
 	provider := NewOpenAIEmbeddingProvider("test", "key", server.URL, "model").WithDimensions(3)
-	embeddings, err := provider.Embed(context.Background(), []string{"first", "second"})
+	embeddings, err := provider.Embed(context.Background(), []string{"first", "second"}, "")
 	if err != nil {
 		t.Fatalf("Embed() error = %v", err)
 	}
@@ -39,7 +39,7 @@ func TestOpenAIEmbeddingProviderRejectsWrongDimension(t *testing.T) {
 	defer server.Close()
 
 	provider := NewOpenAIEmbeddingProvider("test", "key", server.URL, "model").WithDimensions(3)
-	if _, err := provider.Embed(context.Background(), []string{"text"}); err == nil {
+	if _, err := provider.Embed(context.Background(), []string{"text"}, ""); err == nil {
 		t.Fatal("Embed() error = nil, want dimension validation error")
 	}
 }

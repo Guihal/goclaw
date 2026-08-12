@@ -17,7 +17,7 @@ type teamWorkGateTestEmbedder struct {
 
 func (e *teamWorkGateTestEmbedder) Name() string  { return "test-embedder" }
 func (e *teamWorkGateTestEmbedder) Model() string { return "test-embedding" }
-func (e *teamWorkGateTestEmbedder) Embed(context.Context, []string) ([][]float32, error) {
+func (e *teamWorkGateTestEmbedder) Embed(context.Context, []string, string) ([][]float32, error) {
 	e.called = true
 	return [][]float32{{1, 0}}, nil
 }

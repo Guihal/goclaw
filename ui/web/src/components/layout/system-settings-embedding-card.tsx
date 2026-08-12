@@ -9,6 +9,8 @@ import { ProviderModelSelect } from "@/components/shared/provider-model-select";
 interface EmbVerifyResult {
   valid: boolean;
   dimensions?: number;
+  /** Width the memory schema expects; comes from server config, not a constant. */
+  required_dimensions?: number;
   dimension_mismatch?: boolean;
   error?: string;
 }
@@ -88,7 +90,7 @@ export function SystemSettingsEmbeddingCard({
                 <>
                   {verifyResult.dimension_mismatch ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
                   {verifyResult.dimension_mismatch
-                    ? t("embedding.dimensionsMismatch", { count: verifyResult.dimensions })
+                    ? t("embedding.dimensionsMismatch", { count: verifyResult.dimensions, required: verifyResult.required_dimensions })
                     : t("embedding.dimensions", { count: verifyResult.dimensions })}
                 </>
               ) : (

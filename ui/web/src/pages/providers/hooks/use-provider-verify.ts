@@ -5,7 +5,9 @@ export interface VerifyResult {
   valid: boolean;
   error?: string;
   dimensions?: number;
-  dimension_mismatch?: boolean; // true when output dims != 1536
+  /** Width the memory schema expects; from server config, not a constant. */
+  required_dimensions?: number;
+  dimension_mismatch?: boolean; // true when dimensions != required_dimensions
 }
 
 export function useProviderVerify() {

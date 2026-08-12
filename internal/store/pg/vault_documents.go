@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"log/slog"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -39,8 +39,9 @@ func appendTeamFilter(q string, args []any, p int, teamID *string, teamIDs []str
 
 // PGVaultStore implements store.VaultStore backed by PostgreSQL.
 type PGVaultStore struct {
-	db          *sql.DB
-	embProvider store.EmbeddingProvider
+	db            *sql.DB
+	embProvider   store.EmbeddingProvider
+	embeddingDims int
 }
 
 // NewPGVaultStore creates a new PG-backed vault store.
@@ -50,6 +51,19 @@ func NewPGVaultStore(db *sql.DB) *PGVaultStore {
 
 func (s *PGVaultStore) SetEmbeddingProvider(provider store.EmbeddingProvider) {
 	s.embProvider = provider
+}
+
+func (s *PGVaultStore) SetEmbeddingDims(dims int) {
+	if dims > 0 {
+		s.embeddingDims = dims
+	}
+}
+
+func (s *PGVaultStore) resolvedDims() int {
+	if s.embeddingDims > 0 {
+		return s.embeddingDims
+	}
+	return store.RequiredMemoryEmbeddingDimensions
 }
 
 func (s *PGVaultStore) Close() error { return nil }
@@ -95,7 +109,7 @@ func (s *PGVaultStore) UpsertDocument(ctx context.Context, doc *store.VaultDocum
 		if doc.Summary != "" {
 			embedText += " " + doc.Summary
 		}
-		vecs, embErr := s.embProvider.Embed(ctx, []string{embedText})
+		vecs, embErr := s.embProvider.Embed(ctx, []string{embedText}, store.EmbedInputPassage)
 		if embErr == nil && len(vecs) > 0 {
 			v := vectorToString(vecs[0])
 			embStr = &v
@@ -470,7 +484,7 @@ func (s *PGVaultStore) Search(ctx context.Context, opts store.VaultSearchOptions
 	// Vector search if provider available
 	var vecResults []store.VaultSearchResult
 	if s.embProvider != nil {
-		vecs, embErr := s.embProvider.Embed(ctx, []string{opts.Query})
+		vecs, embErr := s.embProvider.Embed(ctx, []string{opts.Query}, store.EmbedInputQuery)
 		if embErr == nil && len(vecs) > 0 {
 			var vecErr error
 			vecResults, vecErr = s.vectorSearch(ctx, vecs[0], tid, aid, tf, cf, opts.Scope, opts.DocTypes, maxResults*2)
@@ -609,10 +623,13 @@ func (s *PGVaultStore) ftsSearch(ctx context.Context, query string, tenantID uui
 
 func (s *PGVaultStore) vectorSearch(ctx context.Context, embedding []float32, tenantID uuid.UUID, agentID *uuid.UUID, tf searchTeamFilter, cf searchChatFilter, scope string, docTypes []string, limit int) ([]store.VaultSearchResult, error) {
 	vecStr := vectorToString(embedding)
-	q := `SELECT id, tenant_id, agent_id, team_id, chat_id, scope, custom_scope, path, path_basename, title, doc_type, content_hash, summary, metadata, created_at, updated_at,
-			1 - (embedding <=> $1) AS score
+	// Both sides cast to halfvec so the ordering matches idx_vault_docs_embedding,
+	// which indexes the halfvec expression rather than the raw vector column.
+	hv := fmt.Sprintf("halfvec(%d)", s.resolvedDims())
+	q := fmt.Sprintf(`SELECT id, tenant_id, agent_id, team_id, chat_id, scope, custom_scope, path, path_basename, title, doc_type, content_hash, summary, metadata, created_at, updated_at,
+			1 - (embedding::%s <=> $1::%s) AS score
 		FROM vault_documents
-		WHERE tenant_id = $2 AND embedding IS NOT NULL`
+		WHERE tenant_id = $2 AND embedding IS NOT NULL`, hv, hv)
 	args := []any{vecStr, tenantID}
 	p := 3
 
@@ -636,7 +653,7 @@ func (s *PGVaultStore) vectorSearch(ctx context.Context, embedding []float32, te
 		p++
 	}
 
-	q += fmt.Sprintf(" ORDER BY embedding <=> $1 LIMIT $%d", p)
+	q += fmt.Sprintf(" ORDER BY embedding::%s <=> $1::%s LIMIT $%d", hv, hv, p)
 	args = append(args, limit)
 
 	var scanned []vaultSearchRow
@@ -842,4 +859,3 @@ func extractFolderNames(prefix string, deepPaths []string) []string {
 	sort.Strings(folders)
 	return folders
 }
-

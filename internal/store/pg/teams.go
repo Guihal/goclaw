@@ -15,13 +15,28 @@ import (
 
 // PGTeamStore implements store.TeamStore backed by Postgres.
 type PGTeamStore struct {
-	db          *sql.DB
-	embProvider store.EmbeddingProvider
+	db            *sql.DB
+	embProvider   store.EmbeddingProvider
+	embeddingDims int
 }
 
 // SetEmbeddingProvider sets the embedding provider for semantic task search.
 func (s *PGTeamStore) SetEmbeddingProvider(p store.EmbeddingProvider) {
 	s.embProvider = p
+}
+
+// SetEmbeddingDims sets the effective embedding dimensions for halfvec casting.
+func (s *PGTeamStore) SetEmbeddingDims(dims int) {
+	if dims > 0 {
+		s.embeddingDims = dims
+	}
+}
+
+func (s *PGTeamStore) resolvedDims() int {
+	if s.embeddingDims > 0 {
+		return s.embeddingDims
+	}
+	return store.RequiredMemoryEmbeddingDimensions
 }
 
 func NewPGTeamStore(db *sql.DB) *PGTeamStore {

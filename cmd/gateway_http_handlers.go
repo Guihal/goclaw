@@ -95,6 +95,7 @@ func wireHTTP(stores *store.Stores, defaultWorkspace, dataDir, bundledSkillsDir 
 		if stores.SystemConfigs != nil {
 			providersH.SetSystemConfigStore(stores.SystemConfigs)
 		}
+		providersH.SetResolvedEmbeddingDimensions(resolvedEmbeddingDims(appCfg))
 		if stores.MCP != nil {
 			providersH.SetMCPServerLookup(buildMCPServerLookup(stores.MCP))
 		}

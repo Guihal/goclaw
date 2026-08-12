@@ -17,9 +17,10 @@ import (
 
 // PGAgentStore implements store.AgentStore backed by Postgres.
 type PGAgentStore struct {
-	db          *sql.DB
-	embProvider store.EmbeddingProvider // optional: for agent frontmatter embeddings
-	embJobs     chan struct{}
+	db            *sql.DB
+	embProvider   store.EmbeddingProvider
+	embJobs       chan struct{}
+	embeddingDims int
 }
 
 func NewPGAgentStore(db *sql.DB) *PGAgentStore {
@@ -31,6 +32,19 @@ func (s *PGAgentStore) SetEmbeddingProvider(provider store.EmbeddingProvider) {
 	s.embProvider = provider
 }
 
+func (s *PGAgentStore) SetEmbeddingDims(dims int) {
+	if dims > 0 {
+		s.embeddingDims = dims
+	}
+}
+
+func (s *PGAgentStore) resolvedDims() int {
+	if s.embeddingDims > 0 {
+		return s.embeddingDims
+	}
+	return store.RequiredMemoryEmbeddingDimensions
+}
+
 // generateAgentEmbedding creates an embedding for an agent's displayName+frontmatter and stores it.
 func (s *PGAgentStore) generateAgentEmbedding(ctx context.Context, agentID uuid.UUID, displayName, frontmatter string) {
 	if s.embProvider == nil || frontmatter == "" {
@@ -40,17 +54,18 @@ func (s *PGAgentStore) generateAgentEmbedding(ctx context.Context, agentID uuid.
 	if frontmatter != "" {
 		text += ": " + frontmatter
 	}
-	embeddings, err := s.embProvider.Embed(ctx, []string{text})
+	embeddings, err := s.embProvider.Embed(ctx, []string{text}, store.EmbedInputPassage)
 	if err != nil || len(embeddings) == 0 || len(embeddings[0]) == 0 {
 		slog.Warn("agent embedding generation failed", "agent", agentID, "error", err)
 		return
 	}
+	dims := s.resolvedDims()
 	vecStr := vectorToString(embeddings[0])
-	if _, err := s.db.ExecContext(ctx, `
-		UPDATE agents SET embedding = $1::vector
+	if _, err := s.db.ExecContext(ctx, fmt.Sprintf(`
+		UPDATE agents SET embedding = $1::vector(%d)
 		WHERE id = $2 AND deleted_at IS NULL AND status = 'active'
 		  AND COALESCE(display_name, '') = $3
-		  AND COALESCE(frontmatter, '') = $4`,
+		  AND COALESCE(frontmatter, '') = $4`, dims),
 		vecStr, agentID, displayName, frontmatter); err != nil {
 		slog.Warn("agent embedding update failed", "agent", agentID, "error", err)
 	}
@@ -118,9 +133,9 @@ func (s *PGAgentStore) BackfillAgentEmbeddings(ctx context.Context) (int, error)
 		updated, err := processEmbeddingBackfillBatch(ctx, s.embProvider, "agent", items,
 			func(ctx context.Context, agent agentBackfillRow, embedding []float32) (int64, error) {
 				result, err := s.db.ExecContext(ctx,
-					`UPDATE agents SET embedding = $1::vector
+					fmt.Sprintf(`UPDATE agents SET embedding = $1::vector(%d)
 				 WHERE id = $2 AND embedding IS NULL AND deleted_at IS NULL AND status = 'active'
-				   AND COALESCE(display_name, '') = $3 AND COALESCE(frontmatter, '') = $4`,
+				   AND COALESCE(display_name, '') = $3 AND COALESCE(frontmatter, '') = $4`, s.resolvedDims()),
 					vectorToString(embedding), agent.ID, agent.DisplayName, agent.Frontmatter)
 				if err != nil {
 					return 0, err

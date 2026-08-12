@@ -32,7 +32,8 @@ type PGSkillStore struct {
 	ttl       time.Duration
 
 	// Embedding provider for vector-based skill search
-	embProvider store.EmbeddingProvider
+	embProvider   store.EmbeddingProvider
+	embeddingDims int
 }
 
 // listCacheEntry holds per-tenant cached skill list with version + TTL.

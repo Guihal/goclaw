@@ -413,6 +413,7 @@ func TestProvidersHandlerCreateRejectsIncompatibleEmbeddingDimensions(t *testing
 	token := setupProvidersAdminToken(t)
 	providerStore := newMockProviderStore()
 	handler := NewProvidersHandler(providerStore, newMockSecretsStore(), nil, "")
+	handler.SetResolvedEmbeddingDimensions(1536)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
@@ -450,6 +451,7 @@ func TestProvidersHandlerCreateAllows1536EmbeddingDimensions(t *testing.T) {
 	token := setupProvidersAdminToken(t)
 	providerStore := newMockProviderStore()
 	handler := NewProvidersHandler(providerStore, newMockSecretsStore(), nil, "")
+	handler.SetResolvedEmbeddingDimensions(1536)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
@@ -570,6 +572,7 @@ func TestProvidersHandlerUpdateRejectsIncompatibleEmbeddingDimensions(t *testing
 	}
 
 	handler := NewProvidersHandler(providerStore, newMockSecretsStore(), nil, "")
+	handler.SetResolvedEmbeddingDimensions(1536)
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 

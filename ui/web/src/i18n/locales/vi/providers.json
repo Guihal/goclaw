@@ -296,14 +296,14 @@
     "enableDesc": "Cho phép provider này tạo embedding cho bộ nhớ, kỹ năng và đồ thị tri thức",
     "model": "Model Embedding",
     "dimensions": "Số chiều đầu ra",
-    "dimensionsHint": "Bộ nhớ GoClaw hiện lưu embedding với vector(1536). Để trống nếu model đã xuất 1536 chiều, hoặc đặt đúng 1536 nếu provider hỗ trợ cắt từ chiều gốc lớn hơn.",
-    "dimensionsInvalid": "Hiện tại bộ nhớ GoClaw chỉ hỗ trợ đúng 1536 chiều.",
+    "dimensionsHint": "Bộ nhớ GoClaw lưu embedding theo số chiều mà schema đã được migrate. Để trống nếu model đã xuất đúng số chiều đó, hoặc đặt đúng số chiều đó nếu provider hỗ trợ cắt từ chiều gốc lớn hơn.",
+    "dimensionsInvalid": "Phải khớp với số chiều embedding mà bộ nhớ GoClaw được cấu hình.",
     "apiBase": "API Base Embedding",
     "apiBasePlaceholder": "(giống provider)",
     "apiBaseHint": "Ghi đè nếu endpoint embedding khác với API base chính của provider",
     "verify": "Kiểm tra Embedding",
     "verifyFailed": "Kiểm tra embedding thất bại",
-    "dimensionsMismatch": "{{count}} chiều — không khớp yêu cầu 1536"
+    "dimensionsMismatch": "{{count}} chiều — không khớp yêu cầu {{required}}"
   },
   "pricing": {
     "title": "Giá Model",

@@ -1,4 +1,9 @@
-/** Curated 1536-dimension embedding models per provider type. */
+/**
+ * Curated embedding models per provider type, all of them 1536-wide. Usable
+ * only when GoClaw memory is configured for 1536; a deployment on another width
+ * (2048 for nemotron-3-embed-1b) types its model in by hand and gets the
+ * mismatch verdict from Verify Embedding.
+ */
 export const EMBEDDING_MODELS: Record<string, { id: string; name: string }[]> = {
   openai_compat: [
     { id: "text-embedding-3-small", name: "text-embedding-3-small (1536d)" },

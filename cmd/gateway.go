@@ -418,7 +418,10 @@ func runGateway() {
 		slog.Debug("skipping MCP database init: pgStores.MCP is nil")
 	}
 
-	teamWorkEmbedder := setupMemoryEmbeddings(pgStores, providerRegistry)
+	// Resolved once: every subsystem that wires an embedding provider must agree
+	// on the width, and 0 means the config/column gate switched embeddings off.
+	embeddingDims := embeddingWiringDims(pgStores, cfg)
+	teamWorkEmbedder := setupMemoryEmbeddings(pgStores, providerRegistry, embeddingDims)
 	usageCapSvc := usagecaps.NewService(pgStores.UsageCaps, pgStores.Providers)
 
 	// Resolve background provider for consolidation + vault enrichment.
@@ -512,7 +515,7 @@ func runGateway() {
 		slog.Info("subagent system enabled", "tools", []string{"spawn"})
 	}
 
-	skillsLoader, skillSearchTool, globalSkillsDir, bundledSkillsDir, builtinSkillsDir := setupSkillsSystem(cfg, workspace, dataDir, pgStores, toolsReg, providerRegistry, msgBus)
+	skillsLoader, skillSearchTool, globalSkillsDir, bundledSkillsDir, builtinSkillsDir := setupSkillsSystem(cfg, workspace, dataDir, pgStores, toolsReg, providerRegistry, msgBus, embeddingDims)
 	_ = skillSearchTool // used via wireExtras → skillsLoader; kept for type clarity
 
 	// Register cron/heartbeat/session/message tools, aliases, allow-paths, store wiring.

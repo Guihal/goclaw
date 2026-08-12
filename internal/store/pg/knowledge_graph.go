@@ -15,8 +15,9 @@ import (
 
 // PGKnowledgeGraphStore implements store.KnowledgeGraphStore backed by Postgres.
 type PGKnowledgeGraphStore struct {
-	db          *sql.DB
-	embProvider store.EmbeddingProvider
+	db            *sql.DB
+	embProvider   store.EmbeddingProvider
+	embeddingDims int // effective embedding dimensions (0 = schema width)
 }
 
 // NewPGKnowledgeGraphStore creates a new PG-backed knowledge graph store.
@@ -27,6 +28,21 @@ func NewPGKnowledgeGraphStore(db *sql.DB) *PGKnowledgeGraphStore {
 // SetEmbeddingProvider configures the embedding provider for semantic search.
 func (s *PGKnowledgeGraphStore) SetEmbeddingProvider(provider store.EmbeddingProvider) {
 	s.embProvider = provider
+}
+
+// SetEmbeddingDims sets the effective embedding dimensions for halfvec casting.
+func (s *PGKnowledgeGraphStore) SetEmbeddingDims(dims int) {
+	if dims > 0 {
+		s.embeddingDims = dims
+	}
+}
+
+// resolvedDims returns the effective embedding dimensions.
+func (s *PGKnowledgeGraphStore) resolvedDims() int {
+	if s.embeddingDims > 0 {
+		return s.embeddingDims
+	}
+	return store.RequiredMemoryEmbeddingDimensions
 }
 
 func (s *PGKnowledgeGraphStore) UpsertEntity(ctx context.Context, entity *store.Entity) error {
@@ -214,7 +230,7 @@ func (s *PGKnowledgeGraphStore) SearchEntities(ctx context.Context, agentID, use
 	// Vector search if provider available
 	var vecResults []scoredEntity
 	if s.embProvider != nil {
-		embeddings, embErr := s.embProvider.Embed(ctx, []string{query})
+		embeddings, embErr := s.embProvider.Embed(ctx, []string{query}, store.EmbedInputQuery)
 		if embErr == nil && len(embeddings) > 0 {
 			vecResults, err = s.vectorSearchEntities(ctx, embeddings[0], aid, userID, limit*2, shared)
 			if err != nil {
@@ -312,13 +328,15 @@ func (s *PGKnowledgeGraphStore) vectorSearchEntities(ctx context.Context, embedd
 		idx++
 	}
 	args = append(args, vecStr, limit)
+	dims := s.resolvedDims()
+	hv := fmt.Sprintf("halfvec(%d)", dims)
 	q := fmt.Sprintf(`
 		SELECT id, agent_id, user_id, external_id, name, entity_type, description,
 		       properties, source_id, confidence, created_at, updated_at,
-		       1 - (embedding <=> $%d::vector) AS score
+		       1 - (embedding::%s <=> $%d::%s) AS score
 		FROM kg_entities
 		WHERE %s
-		ORDER BY embedding <=> $%d::vector LIMIT $%d`, idx, where, idx, idx+1)
+		ORDER BY embedding::%s <=> $%d::%s LIMIT $%d`, hv, idx, hv, where, hv, idx, hv, idx+1)
 
 	var sRows []scoredEntityRow
 	if err = pkgSqlxDB.SelectContext(ctx, &sRows, q, args...); err != nil {

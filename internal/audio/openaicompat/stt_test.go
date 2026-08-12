@@ -204,10 +204,12 @@ func TestSTTOptionsModelOverridesConfig(t *testing.T) {
 }
 
 func TestSTTConfiguredTimeoutAppliesWithoutPerCallOverride(t *testing.T) {
-	requestStarted := make(chan struct{})
+	// The handler never answers, so the only way Transcribe can return is the
+	// configured timeout firing. Deliberately no "request reached the server"
+	// gate: a 25ms budget is shorter than a loaded machine needs to dispatch
+	// the handler, and whether the handler ran says nothing about the timeout.
 	releaseServer := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		close(requestStarted)
 		select {
 		case <-releaseServer:
 		case <-r.Context().Done():
@@ -233,16 +235,10 @@ func TestSTTConfiguredTimeoutAppliesWithoutPerCallOverride(t *testing.T) {
 	}()
 
 	select {
-	case <-requestStarted:
-	case <-time.After(time.Second):
-		t.Fatal("transcription request did not reach the test server")
-	}
-
-	select {
 	case err := <-result:
 		require.Error(t, err)
 		assert.ErrorIs(t, err, context.DeadlineExceeded)
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(2 * time.Second):
 		cancel()
 		<-result
 		t.Fatal("Transcribe did not honor Config.TimeoutMs")

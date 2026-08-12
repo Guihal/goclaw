@@ -18,17 +18,18 @@ import (
 type PGMemoryStore struct {
 	db       *sql.DB
 	provider store.EmbeddingProvider
-	mu       sync.RWMutex   // protects cfg from concurrent read/write
+	mu       sync.RWMutex // protects cfg from concurrent read/write
 	cfg      PGMemoryConfig
 }
 
 // PGMemoryConfig configures the PG memory store.
 type PGMemoryConfig struct {
-	MaxChunkLen  int
-	ChunkOverlap int
-	MaxResults   int
-	VectorWeight float64
-	TextWeight   float64
+	MaxChunkLen   int
+	ChunkOverlap  int
+	MaxResults    int
+	VectorWeight  float64
+	TextWeight    float64
+	EmbeddingDims int // effective embedding dimensions from config (0 = schema width)
 }
 
 // DefaultPGMemoryConfig returns sensible defaults.
@@ -44,6 +45,16 @@ func DefaultPGMemoryConfig() PGMemoryConfig {
 
 func NewPGMemoryStore(db *sql.DB, cfg PGMemoryConfig) *PGMemoryStore {
 	return &PGMemoryStore{db: db, cfg: cfg}
+}
+
+// resolvedDims returns the embedding width templated into SQL: writes cast to
+// vector(N) to keep full float32 precision, reads cast to halfvec(N) to match
+// the expression index.
+func (s *PGMemoryStore) resolvedDims() int {
+	if s.cfg.EmbeddingDims > 0 {
+		return s.cfg.EmbeddingDims
+	}
+	return store.RequiredMemoryEmbeddingDimensions
 }
 
 func (s *PGMemoryStore) GetDocument(ctx context.Context, agentID, userID, path string) (string, error) {
@@ -302,7 +313,7 @@ func (s *PGMemoryStore) IndexDocument(ctx context.Context, agentID, userID, path
 		var freshEmbeddings [][]float32
 		if len(uncachedTexts) > 0 {
 			var embErr error
-			freshEmbeddings, embErr = s.provider.Embed(ctx, uncachedTexts)
+			freshEmbeddings, embErr = s.provider.Embed(ctx, uncachedTexts, store.EmbedInputPassage)
 			if embErr != nil {
 				slog.Warn("memory embedding failed, storing chunks without vectors",
 					"path", path, "chunks", len(chunks), "error", embErr)
@@ -364,8 +375,8 @@ func (s *PGMemoryStore) IndexDocument(ctx context.Context, agentID, userID, path
 		if embeddings != nil && i < len(embeddings) && embeddings[i] != nil {
 			// Insert with embedding via raw SQL (pgvector)
 			s.db.ExecContext(ctx,
-				`INSERT INTO memory_chunks (id, agent_id, document_id, user_id, path, start_line, end_line, hash, text, embedding, tenant_id, updated_at)
-				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::vector, $11, $12)`,
+				fmt.Sprintf(`INSERT INTO memory_chunks (id, agent_id, document_id, user_id, path, start_line, end_line, hash, text, embedding, tenant_id, updated_at)
+				 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::vector(%d), $11, $12)`, s.resolvedDims()),
 				chunkID, aid, docID, uid, path, tc.StartLine, tc.EndLine, hash, tc.Text,
 				vectorToString(embeddings[i]), tid, now,
 			)
@@ -446,7 +457,7 @@ func (s *PGMemoryStore) BackfillEmbeddings(ctx context.Context) (int, error) {
 			texts[i] = c.Text
 		}
 
-		embeddings, err := s.provider.Embed(ctx, texts)
+		embeddings, err := s.provider.Embed(ctx, texts, store.EmbedInputPassage)
 		if err != nil {
 			return total, fmt.Errorf("generate embeddings: %w", err)
 		}
@@ -457,7 +468,7 @@ func (s *PGMemoryStore) BackfillEmbeddings(ctx context.Context) (int, error) {
 			}
 			vecStr := vectorToString(embeddings[i])
 			if _, err := s.db.ExecContext(ctx,
-				"UPDATE memory_chunks SET embedding = $1::vector WHERE id = $2",
+				fmt.Sprintf("UPDATE memory_chunks SET embedding = $1::vector(%d) WHERE id = $2", s.resolvedDims()),
 				vecStr, chunk.ID,
 			); err != nil {
 				return total, fmt.Errorf("update chunk embedding id=%s: %w", chunk.ID, err)

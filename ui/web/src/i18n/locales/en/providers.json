@@ -261,14 +261,14 @@
     "enableDesc": "Allow this provider to generate text embeddings for memory, skills, and knowledge graph",
     "model": "Embedding Model",
     "dimensions": "Output Dimensions",
-    "dimensionsHint": "GoClaw memory currently stores embeddings in vector(1536). Leave this empty when the model already outputs 1536, or set it to exactly 1536 when the provider supports truncation from larger native dimensions.",
-    "dimensionsInvalid": "Only 1536 is currently supported by GoClaw memory.",
+    "dimensionsHint": "GoClaw memory stores embeddings at the width its schema was migrated to. Leave this empty when the model already outputs that width, or set it to exactly that width when the provider supports truncation from larger native dimensions.",
+    "dimensionsInvalid": "Must match the embedding width GoClaw memory is configured for.",
     "apiBase": "Embedding API Base",
     "apiBasePlaceholder": "(same as provider)",
     "apiBaseHint": "Override if embedding endpoint differs from the provider's main API base",
     "verify": "Verify Embedding",
     "verifyFailed": "Embedding verification failed",
-    "dimensionsMismatch": "{{count}} dimensions — does not match required 1536"
+    "dimensionsMismatch": "{{count}} dimensions — does not match the required {{required}}"
   },
   "pricing": {
     "title": "Model Pricing",

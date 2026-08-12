@@ -16,8 +16,9 @@ import (
 
 // PGEpisodicStore implements store.EpisodicStore backed by PostgreSQL.
 type PGEpisodicStore struct {
-	db          *sql.DB
-	embProvider store.EmbeddingProvider
+	db            *sql.DB
+	embProvider   store.EmbeddingProvider
+	embeddingDims int
 }
 
 // NewPGEpisodicStore creates a new PG-backed episodic store.
@@ -26,7 +27,18 @@ func NewPGEpisodicStore(db *sql.DB) *PGEpisodicStore {
 }
 
 func (s *PGEpisodicStore) SetEmbeddingProvider(p store.EmbeddingProvider) { s.embProvider = p }
-func (s *PGEpisodicStore) Close() error                                   { return nil }
+func (s *PGEpisodicStore) SetEmbeddingDims(dims int) {
+	if dims > 0 {
+		s.embeddingDims = dims
+	}
+}
+func (s *PGEpisodicStore) resolvedDims() int {
+	if s.embeddingDims > 0 {
+		return s.embeddingDims
+	}
+	return store.RequiredMemoryEmbeddingDimensions
+}
+func (s *PGEpisodicStore) Close() error { return nil }
 
 // Create inserts a new episodic summary with optional embedding.
 func (s *PGEpisodicStore) Create(ctx context.Context, ep *store.EpisodicSummary) error {
@@ -41,7 +53,7 @@ func (s *PGEpisodicStore) Create(ctx context.Context, ep *store.EpisodicSummary)
 
 	var embStr *string
 	if s.embProvider != nil && ep.Summary != "" {
-		vecs, err := s.embProvider.Embed(ctx, []string{ep.Summary})
+		vecs, err := s.embProvider.Embed(ctx, []string{ep.Summary}, store.EmbedInputPassage)
 		if err == nil && len(vecs) > 0 {
 			v := vectorToString(vecs[0])
 			embStr = &v
@@ -172,7 +184,7 @@ func (s *PGEpisodicStore) Search(ctx context.Context, query, agentID, userID str
 	// Vector search (if embedding provider available)
 	var vecResults []episodicScored
 	if s.embProvider != nil {
-		vecs, err := s.embProvider.Embed(ctx, []string{query})
+		vecs, err := s.embProvider.Embed(ctx, []string{query}, store.EmbedInputQuery)
 		if err == nil && len(vecs) > 0 {
 			vecResults = s.vectorSearch(ctx, vecs[0], agentID, userID, maxResults*2, opts)
 		}

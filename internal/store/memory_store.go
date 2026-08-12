@@ -2,6 +2,15 @@ package store
 
 import "context"
 
+// EmbeddingInputType classifies the semantic role of embedding input.
+// Duplicated from memory package to avoid circular import.
+type EmbeddingInputType = string
+
+const (
+	EmbedInputQuery   = "query"
+	EmbedInputPassage = "passage"
+)
+
 // DocumentInfo describes a memory document.
 type DocumentInfo struct {
 	Path      string `json:"path" db:"path"`
@@ -26,7 +35,7 @@ type MemorySearchResult struct {
 type MemorySearchOptions struct {
 	MaxResults   int
 	MinScore     float64
-	Source       string  // "memory", "sessions", ""
+	Source       string // "memory", "sessions", ""
 	PathPrefix   string
 	VectorWeight float64 // per-agent override (0 = use store default)
 	TextWeight   float64 // per-agent override (0 = use store default)
@@ -36,7 +45,7 @@ type MemorySearchOptions struct {
 type EmbeddingProvider interface {
 	Name() string
 	Model() string
-	Embed(ctx context.Context, texts []string) ([][]float32, error)
+	Embed(ctx context.Context, texts []string, inputType EmbeddingInputType) ([][]float32, error)
 }
 
 // DocumentDetail provides full document info including chunk/embedding stats.

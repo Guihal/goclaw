@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
+	"github.com/nextlevelbuilder/goclaw/internal/store"
 	usagecaps "github.com/nextlevelbuilder/goclaw/internal/usage/caps"
 )
 
@@ -37,7 +38,7 @@ const (
 )
 
 type Embedder interface {
-	Embed(ctx context.Context, texts []string) ([][]float32, error)
+	Embed(ctx context.Context, texts []string, inputType store.EmbeddingInputType) ([][]float32, error)
 }
 
 type Profile struct {
@@ -103,7 +104,7 @@ func Classify(ctx context.Context, input Input) Result {
 	}
 
 	texts := append([]string{input.Message}, append(selfDocs, collaborationDocs...)...)
-	vectors, err := input.Embedder.Embed(ctx, texts)
+	vectors, err := input.Embedder.Embed(ctx, texts, store.EmbedInputQuery)
 	if err != nil || len(vectors) != len(texts) {
 		return Result{Decision: DecisionSelf, Reason: "embedding failed"}
 	}

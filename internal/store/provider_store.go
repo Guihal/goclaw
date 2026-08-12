@@ -140,9 +140,23 @@ type LLMProviderData struct {
 	Settings     json.RawMessage `json:"settings,omitempty" db:"settings"`
 }
 
-// RequiredMemoryEmbeddingDimensions is the fixed vector size used by the pgvector memory schema.
-// All memory embeddings must match this dimensionality until the schema supports variable sizes.
-const RequiredMemoryEmbeddingDimensions = 1536
+// RequiredMemoryEmbeddingDimensions is the vector width the pgvector memory
+// schema is provisioned with. It MUST match the width migration 000097 gives
+// the embedding columns: the column type is the hard constraint, and a value
+// narrower than the column makes every INSERT fail on a dimension mismatch.
+// MemoryConfig.EmbeddingDimensions overrides it, and moving that knob requires
+// a matching migration.
+const RequiredMemoryEmbeddingDimensions = 2048
+
+// ResolveEmbeddingDimensions returns the effective embedding dimension count.
+// memoryDims comes from MemoryConfig.EmbeddingDimensions; 0 means use the
+// schema width in RequiredMemoryEmbeddingDimensions.
+func ResolveEmbeddingDimensions(memoryDims int) int {
+	if memoryDims > 0 {
+		return memoryDims
+	}
+	return RequiredMemoryEmbeddingDimensions
+}
 
 // EmbeddingSettings holds embedding-specific configuration stored in provider settings JSONB.
 type EmbeddingSettings struct {

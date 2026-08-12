@@ -2,9 +2,12 @@ package pg
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/google/uuid"
+
+	"github.com/nextlevelbuilder/goclaw/internal/store"
 )
 
 // BackfillKGEmbeddings generates embeddings for all KG entities that don't have one yet.
@@ -65,7 +68,7 @@ func (s *PGKnowledgeGraphStore) BackfillKGEmbeddings(ctx context.Context) (int, 
 		for i, p := range pending {
 			texts[i] = p.text
 		}
-		embeddings, err := s.embProvider.Embed(ctx, texts)
+		embeddings, err := s.embProvider.Embed(ctx, texts, store.EmbedInputPassage)
 		if err != nil {
 			slog.Warn("kg entity embedding batch failed, skipping batch", "error", err, "batch_size", len(pending))
 			// Mark these entities as failed so we don't re-fetch them
@@ -87,7 +90,7 @@ func (s *PGKnowledgeGraphStore) BackfillKGEmbeddings(ctx context.Context) (int, 
 			}
 			vecStr := vectorToString(emb)
 			if _, err := s.db.ExecContext(ctx,
-				`UPDATE kg_entities SET embedding = $1::vector WHERE id = $2`,
+				fmt.Sprintf(`UPDATE kg_entities SET embedding = $1::vector(%d) WHERE id = $2`, s.resolvedDims()),
 				vecStr, pending[i].id,
 			); err != nil {
 				slog.Warn("kg entity embedding update failed", "entity_id", pending[i].id, "error", err)
@@ -122,13 +125,13 @@ func (s *PGKnowledgeGraphStore) EmbedEntity(ctx context.Context, entityID, name,
 		return
 	}
 	text := name + " " + description
-	embeddings, err := s.embProvider.Embed(ctx, []string{text})
+	embeddings, err := s.embProvider.Embed(ctx, []string{text}, store.EmbedInputPassage)
 	if err != nil || len(embeddings) == 0 || len(embeddings[0]) == 0 {
 		return // best-effort, don't fail the upsert
 	}
 	vecStr := vectorToString(embeddings[0])
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE kg_entities SET embedding = $1::vector WHERE id = $2`,
+		fmt.Sprintf(`UPDATE kg_entities SET embedding = $1::vector(%d) WHERE id = $2`, s.resolvedDims()),
 		vecStr, eid,
 	); err != nil {
 		slog.Warn("kg entity embedding failed", "entity_id", entityID, "error", err)

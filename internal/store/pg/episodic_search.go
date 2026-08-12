@@ -93,16 +93,19 @@ func (s *PGEpisodicStore) ftsSearch(ctx context.Context, query, agentID, userID 
 // When userID is empty, returns results across all users (admin view).
 func (s *PGEpisodicStore) vectorSearch(ctx context.Context, embedding []float32, agentID, userID string, limit int, opts store.EpisodicSearchOptions) []episodicScored {
 	vecStr := vectorToString(embedding)
-	q := `SELECT id, session_key, COALESCE(NULLIF(l0_abstract, ''), left(summary, 500)) AS l0_abstract,
-			key_topics, 1 - (embedding <=> $1) AS score, created_at, expires_at
+	// Both sides cast to halfvec so the ordering matches idx_episodic_vec, which
+	// indexes the halfvec expression rather than the raw vector column.
+	hv := fmt.Sprintf("halfvec(%d)", s.resolvedDims())
+	q := fmt.Sprintf(`SELECT id, session_key, COALESCE(NULLIF(l0_abstract, ''), left(summary, 500)) AS l0_abstract,
+			key_topics, 1 - (embedding::%s <=> $1::%s) AS score, created_at, expires_at
 		FROM episodic_summaries
 		WHERE agent_id = $2
-		  AND embedding IS NOT NULL`
+		  AND embedding IS NOT NULL`, hv, hv)
 	args := []any{vecStr, agentID}
 	p := 3
 
 	q, args, p = appendEpisodicSearchFilters(ctx, q, args, p, userID, opts)
-	q += fmt.Sprintf(" ORDER BY embedding <=> $1 LIMIT $%d", p)
+	q += fmt.Sprintf(" ORDER BY embedding::%s <=> $1::%s LIMIT $%d", hv, hv, p)
 	args = append(args, limit)
 
 	var rows []episodicScoredRow

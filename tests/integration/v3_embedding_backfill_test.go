@@ -249,7 +249,7 @@ type incompleteEmbedProvider struct{}
 
 func (incompleteEmbedProvider) Name() string  { return "incomplete" }
 func (incompleteEmbedProvider) Model() string { return "incomplete" }
-func (incompleteEmbedProvider) Embed(context.Context, []string) ([][]float32, error) {
+func (incompleteEmbedProvider) Embed(context.Context, []string, store.EmbeddingInputType) ([][]float32, error) {
 	return nil, nil
 }
 
@@ -261,13 +261,13 @@ type poisonEmbedProvider struct {
 
 func (p poisonEmbedProvider) Name() string  { return "poison" }
 func (p poisonEmbedProvider) Model() string { return "poison" }
-func (p poisonEmbedProvider) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+func (p poisonEmbedProvider) Embed(ctx context.Context, texts []string, inputType store.EmbeddingInputType) ([][]float32, error) {
 	for _, text := range texts {
 		if strings.Contains(text, "poison") {
 			return nil, errors.New("rejected poison input")
 		}
 	}
-	return p.delegate.Embed(ctx, texts)
+	return p.delegate.Embed(ctx, texts, inputType)
 }
 
 var _ store.EmbeddingProvider = poisonEmbedProvider{}
@@ -290,7 +290,7 @@ func newBlockingAgentEmbedProvider() *blockingAgentEmbedProvider {
 
 func (p *blockingAgentEmbedProvider) Name() string  { return "blocking-agent" }
 func (p *blockingAgentEmbedProvider) Model() string { return "blocking-agent" }
-func (p *blockingAgentEmbedProvider) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+func (p *blockingAgentEmbedProvider) Embed(ctx context.Context, texts []string, _ store.EmbeddingInputType) ([][]float32, error) {
 	value := float32(0.2)
 	if strings.Contains(texts[0], "old routing metadata") {
 		value = 0.1

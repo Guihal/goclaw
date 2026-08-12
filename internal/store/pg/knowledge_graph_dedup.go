@@ -125,13 +125,15 @@ func (s *PGKnowledgeGraphStore) knnNeighbors(ctx context.Context, agentID uuid.U
 		idx++
 	}
 	args = append(args, embeddingStr, limit)
+	dims := s.resolvedDims()
+	hv := fmt.Sprintf("halfvec(%d)", dims)
 	q := fmt.Sprintf(`
 		SELECT id, name, confidence,
-		       1 - (embedding <=> $%d::vector) AS similarity
+		       1 - (embedding::%s <=> $%d::%s) AS similarity
 		FROM kg_entities
 		WHERE %s
-		ORDER BY embedding <=> $%d::vector
-		LIMIT $%d`, idx, where, idx, idx+1)
+		ORDER BY embedding::%s <=> $%d::%s
+		LIMIT $%d`, hv, idx, hv, where, hv, idx, hv, idx+1)
 
 	var nRows []knnNeighborRow
 	if err = pkgSqlxDB.SelectContext(ctx, &nRows, q, args...); err != nil {
@@ -211,8 +213,10 @@ func (s *PGKnowledgeGraphStore) ScanDuplicates(ctx context.Context, agentID, use
 	}
 	args = append(args, threshold, limit)
 
+	dims := s.resolvedDims()
+	hv := fmt.Sprintf("halfvec(%d)", dims)
 	q := fmt.Sprintf(`
-		SELECT a.id, b.id, 1 - (a.embedding <=> b.embedding) AS similarity
+		SELECT a.id, b.id, 1 - (a.embedding::%s <=> b.embedding::%s) AS similarity
 		FROM kg_entities a
 		JOIN kg_entities b ON b.agent_id = a.agent_id
 		  AND b.tenant_id = a.tenant_id
@@ -221,9 +225,9 @@ func (s *PGKnowledgeGraphStore) ScanDuplicates(ctx context.Context, agentID, use
 		  AND b.embedding IS NOT NULL
 		WHERE %s
 		  AND a.embedding IS NOT NULL
-		  AND 1 - (a.embedding <=> b.embedding) > $%d
+		  AND 1 - (a.embedding::%s <=> b.embedding::%s) > $%d
 		ORDER BY similarity DESC
-		LIMIT $%d`, where, idx, idx+1)
+		LIMIT $%d`, hv, hv, where, hv, hv, idx, idx+1)
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {

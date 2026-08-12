@@ -201,7 +201,7 @@ func (t *SkillSearchTool) filterByAccess(ctx context.Context, results []skills.S
 // Weights: BM25 0.3, vector 0.7 (same as memory hybrid search).
 func (t *SkillSearchTool) hybridSearch(ctx context.Context, query string, bm25Results []skills.SkillSearchResult, maxResults int) []skills.SkillSearchResult {
 	// Generate query embedding
-	embeddings, err := t.embProvider.Embed(ctx, []string{query})
+	embeddings, err := t.embProvider.Embed(ctx, []string{query}, store.EmbedInputQuery)
 	if err != nil || len(embeddings) == 0 || len(embeddings[0]) == 0 {
 		slog.Warn("skill_search embedding failed, falling back to BM25", "error", err)
 		if len(bm25Results) > maxResults {

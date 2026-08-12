@@ -125,6 +125,18 @@ func ChunkText(text string, maxChunkLen, overlap int) []TextChunk {
 	return chunks
 }
 
+// EmbeddingInputType classifies the semantic role of the input text.
+// NVIDIA NIM models use this to optimize retrieval quality.
+// Empty string means the parameter is omitted (compatible with non-NVIDIA providers).
+type EmbeddingInputType = string
+
+const (
+	// InputTypeQuery marks input as a search query (used when searching/retrieving).
+	InputTypeQuery = "query"
+	// InputTypePassage marks input as a document passage (used when indexing/storing).
+	InputTypePassage = "passage"
+)
+
 // EmbeddingProvider generates vector embeddings for text.
 type EmbeddingProvider interface {
 	// Name returns the provider identifier (e.g., "openai", "voyage").
@@ -134,7 +146,8 @@ type EmbeddingProvider interface {
 	Model() string
 
 	// Embed generates embeddings for a batch of texts.
-	Embed(ctx context.Context, texts []string) ([][]float32, error)
+	// inputType classifies the semantic role (query vs passage); empty string omits the parameter.
+	Embed(ctx context.Context, texts []string, inputType EmbeddingInputType) ([][]float32, error)
 }
 
 // OpenAIEmbeddingProvider uses the OpenAI-compatible embedding API.
@@ -175,13 +188,21 @@ func (p *OpenAIEmbeddingProvider) WithDimensions(d int) *OpenAIEmbeddingProvider
 func (p *OpenAIEmbeddingProvider) Name() string  { return p.name }
 func (p *OpenAIEmbeddingProvider) Model() string { return p.model }
 
-func (p *OpenAIEmbeddingProvider) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+// APIBase returns the endpoint the vectors are produced by. Part of the
+// embedding identity: the same model name served from a different endpoint is
+// a different model, and the vectors it returns are not comparable.
+func (p *OpenAIEmbeddingProvider) APIBase() string { return p.apiURL }
+
+func (p *OpenAIEmbeddingProvider) Embed(ctx context.Context, texts []string, inputType EmbeddingInputType) ([][]float32, error) {
 	reqBody := map[string]any{
 		"input": texts,
 		"model": p.model,
 	}
 	if p.dimensions > 0 {
 		reqBody["dimensions"] = p.dimensions
+	}
+	if inputType != "" {
+		reqBody["input_type"] = string(inputType)
 	}
 
 	bodyJSON, err := json.Marshal(reqBody)

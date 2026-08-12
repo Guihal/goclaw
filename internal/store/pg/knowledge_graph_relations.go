@@ -221,7 +221,7 @@ func (s *PGKnowledgeGraphStore) IngestExtraction(ctx context.Context, agentID, u
 			texts = append(texts, e.Name+" "+e.Description)
 			ids = append(ids, extIDToUUID[e.ExternalID])
 		}
-		embeddings, embErr := s.embProvider.Embed(ctx, texts)
+		embeddings, embErr := s.embProvider.Embed(ctx, texts, store.EmbedInputPassage)
 		if embErr != nil {
 			slog.Warn("kg entity embedding batch failed", "error", embErr)
 		} else {
@@ -231,7 +231,7 @@ func (s *PGKnowledgeGraphStore) IngestExtraction(ctx context.Context, agentID, u
 				}
 				vecStr := vectorToString(emb)
 				if _, err := tx.ExecContext(ctx,
-					`UPDATE kg_entities SET embedding = $1::vector WHERE id = $2`,
+					fmt.Sprintf(`UPDATE kg_entities SET embedding = $1::vector(%d) WHERE id = $2`, s.resolvedDims()),
 					vecStr, ids[i],
 				); err != nil {
 					slog.Warn("kg entity embedding update failed", "entity_id", ids[i], "error", err)

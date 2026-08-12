@@ -3,6 +3,7 @@ package pg
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"log/slog"
 	"slices"
 
@@ -17,7 +18,7 @@ func (s *PGTeamStore) generateTaskEmbedding(ctx context.Context, taskID uuid.UUI
 	if s.embProvider == nil || subject == "" {
 		return
 	}
-	embeddings, err := s.embProvider.Embed(ctx, []string{subject})
+	embeddings, err := s.embProvider.Embed(ctx, []string{subject}, store.EmbedInputPassage)
 	if err != nil {
 		slog.Warn("task embedding generation failed", "task_id", taskID, "error", err)
 		return
@@ -25,9 +26,10 @@ func (s *PGTeamStore) generateTaskEmbedding(ctx context.Context, taskID uuid.UUI
 	if len(embeddings) == 0 || len(embeddings[0]) == 0 {
 		return
 	}
+	dims := s.resolvedDims()
 	vecStr := vectorToString(embeddings[0])
 	if _, err := s.db.ExecContext(ctx,
-		`UPDATE team_tasks SET embedding = $1::vector WHERE id = $2`, vecStr, taskID,
+		fmt.Sprintf(`UPDATE team_tasks SET embedding = $1::vector(%d) WHERE id = $2`, dims), vecStr, taskID,
 	); err != nil {
 		slog.Warn("task embedding store failed", "task_id", taskID, "error", err)
 	}
@@ -77,7 +79,7 @@ func (s *PGTeamStore) BackfillTaskEmbeddings(ctx context.Context) (int, error) {
 		for i, p := range pending {
 			texts[i] = p.subject
 		}
-		embeddings, err := s.embProvider.Embed(ctx, texts)
+		embeddings, err := s.embProvider.Embed(ctx, texts, store.EmbedInputPassage)
 		if err != nil {
 			slog.Warn("task embedding batch failed", "error", err)
 			break
@@ -87,9 +89,10 @@ func (s *PGTeamStore) BackfillTaskEmbeddings(ctx context.Context) (int, error) {
 			if len(emb) == 0 {
 				continue
 			}
+			dims := s.resolvedDims()
 			vecStr := vectorToString(emb)
 			if _, err := s.db.ExecContext(ctx,
-				`UPDATE team_tasks SET embedding = $1::vector WHERE id = $2`,
+				fmt.Sprintf(`UPDATE team_tasks SET embedding = $1::vector(%d) WHERE id = $2`, dims),
 				vecStr, pending[i].id,
 			); err != nil {
 				slog.Warn("task embedding update failed", "task_id", pending[i].id, "error", err)
@@ -117,13 +120,15 @@ func (s *PGTeamStore) SearchTasksByEmbedding(ctx context.Context, teamID uuid.UU
 	vecStr := vectorToString(embedding)
 	tid := tenantIDForInsert(ctx)
 
+	dims := s.resolvedDims()
+	hv := fmt.Sprintf("halfvec(%d)", dims)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+taskSelectCols+`
 		 `+taskJoinClause+`
 		 WHERE t.team_id = $1 AND t.embedding IS NOT NULL
 		   AND ($4 = '' OR t.user_id = $4)
 		   AND t.tenant_id = $5
-		 ORDER BY t.embedding <=> $2::vector
+		 ORDER BY t.embedding::`+hv+` <=> $2::`+hv+`
 		 LIMIT $3`,
 		teamID, vecStr, limit, userID, tid)
 	if err != nil {

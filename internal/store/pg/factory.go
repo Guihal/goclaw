@@ -17,6 +17,9 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 	initSqlx(db)
 
 	memCfg := DefaultPGMemoryConfig()
+	if cfg.EmbeddingDims > 0 {
+		memCfg.EmbeddingDims = cfg.EmbeddingDims
+	}
 
 	skillsDir := cfg.SkillsStorageDir
 	if skillsDir == "" {
@@ -79,5 +82,31 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 	// Wire permStore into WorkstationStore so Create seeds allowlist atomically (H5 fix).
 	// Must happen after both stores are constructed.
 	pgStores.Workstations.(*PGWorkstationStore).SetPermStore(pgStores.WorkstationPermissions)
+
+	// Propagate embedding dimensions to stores that build halfvec SQL expressions.
+	if cfg.EmbeddingDims > 0 {
+		if s, ok := pgStores.KnowledgeGraph.(*PGKnowledgeGraphStore); ok {
+			s.SetEmbeddingDims(cfg.EmbeddingDims)
+		}
+		if s, ok := pgStores.Episodic.(*PGEpisodicStore); ok {
+			s.SetEmbeddingDims(cfg.EmbeddingDims)
+		}
+		if s, ok := pgStores.Vault.(*PGVaultStore); ok {
+			s.SetEmbeddingDims(cfg.EmbeddingDims)
+		}
+		if s, ok := pgStores.Skills.(*PGSkillStore); ok {
+			s.SetEmbeddingDims(cfg.EmbeddingDims)
+		}
+		if s, ok := pgStores.Agents.(*PGAgentStore); ok {
+			s.SetEmbeddingDims(cfg.EmbeddingDims)
+		}
+		if s, ok := pgStores.Teams.(*PGTeamStore); ok {
+			s.SetEmbeddingDims(cfg.EmbeddingDims)
+		}
+		if s, ok := pgStores.AgentLinks.(*PGAgentLinkStore); ok {
+			s.SetEmbeddingDims(cfg.EmbeddingDims)
+		}
+	}
+
 	return pgStores, nil
 }

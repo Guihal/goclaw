@@ -374,13 +374,26 @@ func wireTracingAndCron(
 func setupMemoryEmbeddings(
 	pgStores *store.Stores,
 	providerRegistry *providers.Registry,
+	dims int,
 ) memory.EmbeddingProvider {
 	var resolved memory.EmbeddingProvider
-	if pgStores.Memory != nil {
+	// dims == 0 means the width gate rejected the configuration; see
+	// embeddingWiringDims.
+	if pgStores.Memory != nil && dims > 0 {
 		if embProvider := resolveEmbeddingProvider(pgStores.Providers, providerRegistry, pgStores.SystemConfigs); embProvider != nil {
 			resolved = embProvider
 			pgStores.Memory.SetEmbeddingProvider(embProvider)
 			slog.Info("memory embeddings enabled", "provider", embProvider.Name(), "model", embProvider.Model())
+
+			// Runs before any backfill goroutine below: a stale cache would
+			// otherwise feed wrong-width vectors into the first re-embed batch.
+			purger, _ := pgStores.Memory.(embeddingCachePurger)
+			invalidator, _ := pgStores.Memory.(embeddingVectorInvalidator)
+			reconcileEmbeddingIdentity(
+				store.WithTenantID(context.Background(), store.MasterTenantID),
+				pgStores.SystemConfigs, purger, invalidator,
+				newEmbeddingIdentity(embProvider, dims),
+			)
 
 			// Backfill embeddings for existing chunks that were stored without vectors.
 			type backfiller interface {
@@ -561,6 +574,7 @@ func setupSkillsSystem(
 	toolsReg *tools.Registry,
 	providerRegistry *providers.Registry,
 	msgBus *bus.MessageBus,
+	embeddingDims int,
 ) (*skills.Loader, *tools.SkillSearchTool, string, string, string) {
 	var bundledSkillsDir string // resolved later; returned for HTTP handler fallback
 
@@ -661,7 +675,10 @@ func setupSkillsSystem(
 		if sas, ok := pgStores.Skills.(store.SkillAccessStore); ok {
 			skillSearchTool.SetSkillAccessStore(sas)
 		}
-		if pgSkills, ok := pgStores.Skills.(*pg.PGSkillStore); ok {
+		// embeddingDims == 0 means the width gate rejected the configuration;
+		// wiring skills embeddings anyway would spend API calls on writes that
+		// the column type rejects.
+		if pgSkills, ok := pgStores.Skills.(*pg.PGSkillStore); ok && embeddingDims > 0 {
 			if embProvider := resolveEmbeddingProvider(pgStores.Providers, providerRegistry, pgStores.SystemConfigs); embProvider != nil {
 				pgSkills.SetEmbeddingProvider(embProvider)
 				skillSearchTool.SetEmbeddingSearcher(pgSkills, embProvider)

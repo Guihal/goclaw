@@ -14,6 +14,20 @@ func (s *PGSkillStore) SetEmbeddingProvider(provider store.EmbeddingProvider) {
 	s.embProvider = provider
 }
 
+// SetEmbeddingDims sets the effective embedding dimensions for halfvec casting.
+func (s *PGSkillStore) SetEmbeddingDims(dims int) {
+	if dims > 0 {
+		s.embeddingDims = dims
+	}
+}
+
+func (s *PGSkillStore) resolvedDims() int {
+	if s.embeddingDims > 0 {
+		return s.embeddingDims
+	}
+	return store.RequiredMemoryEmbeddingDimensions
+}
+
 // SearchByEmbedding performs vector similarity search over skills using pgvector cosine distance.
 func (s *PGSkillStore) SearchByEmbedding(ctx context.Context, embedding []float32, limit int) ([]store.SkillSearchResult, error) {
 	if limit <= 0 {
@@ -29,13 +43,15 @@ func (s *PGSkillStore) SearchByEmbedding(ctx context.Context, embedding []float3
 	tenantCond := buildSkillEmbeddingTenantCond(tc)
 	orderN := nextParam
 	limitN := orderN + 1
+	dims := s.resolvedDims()
+	hv := fmt.Sprintf("halfvec(%d)", dims)
 	q := fmt.Sprintf(`SELECT name, slug, COALESCE(description, '') AS description, version, file_path,
-			1 - (embedding <=> $1::vector) AS score
+			1 - (embedding::%s <=> $1::%s) AS score
 		FROM skills
 		WHERE status = 'active' AND enabled = true AND embedding IS NOT NULL
 		  AND visibility != 'private'%s
-		ORDER BY embedding <=> $%d::vector
-		LIMIT $%d`, tenantCond, orderN, limitN)
+		ORDER BY embedding::%s <=> $%d::%s
+		LIMIT $%d`, hv, hv, tenantCond, hv, orderN, hv, limitN)
 
 	args := append([]any{vecStr}, tcArgs...)
 	args = append(args, vecStr, limit)
@@ -96,7 +112,7 @@ func (s *PGSkillStore) BackfillSkillEmbeddings(ctx context.Context) (int, error)
 		if sk.Desc != "" {
 			text += ": " + sk.Desc
 		}
-		embeddings, err := s.embProvider.Embed(ctx, []string{text})
+		embeddings, err := s.embProvider.Embed(ctx, []string{text}, store.EmbedInputPassage)
 		if err != nil {
 			slog.Warn("skill embedding failed", "skill", sk.Name, "error", err)
 			continue
@@ -105,8 +121,9 @@ func (s *PGSkillStore) BackfillSkillEmbeddings(ctx context.Context) (int, error)
 			continue
 		}
 		vecStr := vectorToString(embeddings[0])
+		dims := s.resolvedDims()
 		_, err = s.db.ExecContext(ctx,
-			`UPDATE skills SET embedding = $1::vector WHERE id = $2`, vecStr, sk.ID)
+			fmt.Sprintf(`UPDATE skills SET embedding = $1::vector(%d) WHERE id = $2`, dims), vecStr, sk.ID)
 		if err != nil {
 			slog.Warn("skill embedding update failed", "skill", sk.Name, "error", err)
 			continue
@@ -127,7 +144,7 @@ func (s *PGSkillStore) generateEmbedding(ctx context.Context, slug, name, descri
 	if description != "" {
 		text += ": " + description
 	}
-	embeddings, err := s.embProvider.Embed(ctx, []string{text})
+	embeddings, err := s.embProvider.Embed(ctx, []string{text}, store.EmbedInputPassage)
 	if err != nil {
 		slog.Warn("skill embedding generation failed", "skill", name, "error", err)
 		return
@@ -136,8 +153,9 @@ func (s *PGSkillStore) generateEmbedding(ctx context.Context, slug, name, descri
 		return
 	}
 	vecStr := vectorToString(embeddings[0])
+	dims := s.resolvedDims()
 	_, err = s.db.ExecContext(ctx,
-		`UPDATE skills SET embedding = $1::vector WHERE slug = $2 AND status = 'active'`, vecStr, slug)
+		fmt.Sprintf(`UPDATE skills SET embedding = $1::vector(%d) WHERE slug = $2 AND status = 'active'`, dims), vecStr, slug)
 	if err != nil {
 		slog.Warn("skill embedding store failed", "skill", name, "error", err)
 	}

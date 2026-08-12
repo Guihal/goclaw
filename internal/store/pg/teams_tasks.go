@@ -219,7 +219,7 @@ func (s *PGTeamStore) ListTasks(ctx context.Context, teamID uuid.UUID, orderBy s
 		statusWhere = "AND t.status = 'in_review'"
 	case store.TeamTaskFilterCompleted:
 		statusWhere = "AND t.status IN ('completed','cancelled')"
-	// "", store.TeamTaskFilterAll ("all") → no filter (all statuses)
+		// "", store.TeamTaskFilterAll ("all") → no filter (all statuses)
 	}
 
 	if limit <= 0 {
@@ -383,7 +383,7 @@ func (s *PGTeamStore) SearchTasks(ctx context.Context, teamID uuid.UUID, query s
 	}
 
 	// Hybrid search: combine FTS + vector similarity.
-	embeddings, err := s.embProvider.Embed(ctx, []string{query})
+	embeddings, err := s.embProvider.Embed(ctx, []string{query}, store.EmbedInputQuery)
 	if err != nil {
 		slog.Warn("task search embedding failed, falling back to FTS", "error", err)
 		return truncatedFTS()

@@ -131,12 +131,15 @@ func buildEmbeddingProvider(
 		apiBase = memCfg.EmbeddingAPIBase
 	}
 
-	// Dimension truncation: default to RequiredMemoryEmbeddingDimensions to match pgvector schema.
-	// Models that natively output 1536 ignore the parameter; models with larger native dims get truncated.
-	dims := store.RequiredMemoryEmbeddingDimensions
-	if es != nil && es.Dimensions > 0 && es.Dimensions != store.RequiredMemoryEmbeddingDimensions {
-		slog.Warn("ignoring incompatible provider embedding dimensions for memory schema",
-			"provider", dbp.Name, "requested", es.Dimensions, "required", store.RequiredMemoryEmbeddingDimensions)
+	// Dimension: resolve from MemoryConfig, defaulting to the schema width.
+	resolvedDims := store.ResolveEmbeddingDimensions(0)
+	if memCfg != nil {
+		resolvedDims = store.ResolveEmbeddingDimensions(memCfg.EmbeddingDimensions)
+	}
+	dims := resolvedDims
+	if es != nil && es.Dimensions > 0 && es.Dimensions != resolvedDims {
+		slog.Warn("provider embedding dimensions differ from configured memory dimensions",
+			"provider", dbp.Name, "requested", es.Dimensions, "configured", resolvedDims)
 	}
 
 	// Try registry first for the actual API key / base (handles runtime-registered providers)

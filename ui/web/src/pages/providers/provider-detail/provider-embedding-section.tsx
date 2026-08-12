@@ -60,7 +60,8 @@ export function ProviderEmbeddingSection({
 
           <div className="space-y-2">
             <Label>{t("embedding.dimensions")}</Label>
-            <p className="text-sm text-muted-foreground">1536</p>
+            {/* Width comes from the server; known only once Verify ran. */}
+            <p className="text-sm text-muted-foreground">{verifyResult?.required_dimensions ?? "—"}</p>
             <p className="text-xs text-muted-foreground">{t("embedding.dimensionsHint")}</p>
           </div>
 
@@ -105,7 +106,7 @@ export function ProviderEmbeddingSection({
                       <CheckCircle2 className="h-3.5 w-3.5" />
                     )}
                     {verifyResult.dimension_mismatch
-                      ? t("embedding.dimensionsMismatch", { count: verifyResult.dimensions })
+                      ? t("embedding.dimensionsMismatch", { count: verifyResult.dimensions, required: verifyResult.required_dimensions })
                       : `${verifyResult.dimensions} dimensions`}
                   </>
                 ) : (

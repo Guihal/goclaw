@@ -380,16 +380,17 @@ type ContextPruningHardClear struct {
 // MemoryConfig configures the agent memory system (SQLite + FTS5 + optional embeddings).
 // Matching TS agents.defaults.memory.
 type MemoryConfig struct {
-	Enabled           *bool   `json:"enabled,omitempty"`            // default true (nil = enabled)
-	EmbeddingProvider string  `json:"embedding_provider,omitempty"` // "openai", "gemini", "openrouter", "" (auto-select)
-	EmbeddingModel    string  `json:"embedding_model,omitempty"`    // default "text-embedding-3-small"
-	EmbeddingAPIBase  string  `json:"embedding_api_base,omitempty"` // custom endpoint URL
-	MaxResults        int     `json:"max_results,omitempty"`        // default 6
-	MaxChunkLen       int     `json:"max_chunk_len,omitempty"`      // default 1000
-	ChunkOverlap      int     `json:"chunk_overlap,omitempty"`      // overlap chars between chunks (default 200)
-	VectorWeight      float64 `json:"vector_weight,omitempty"`      // hybrid search vector weight (default 0.7)
-	TextWeight        float64 `json:"text_weight,omitempty"`        // hybrid search FTS weight (default 0.3)
-	MinScore          float64 `json:"min_score,omitempty"`          // minimum relevance score (default 0.35)
+	Enabled             *bool   `json:"enabled,omitempty"`              // default true (nil = enabled)
+	EmbeddingProvider   string  `json:"embedding_provider,omitempty"`   // "openai", "gemini", "openrouter", "" (auto-select)
+	EmbeddingModel      string  `json:"embedding_model,omitempty"`      // default "text-embedding-3-small"
+	EmbeddingAPIBase    string  `json:"embedding_api_base,omitempty"`   // custom endpoint URL
+	EmbeddingDimensions int     `json:"embedding_dimensions,omitempty"` // pgvector column width; 0 = the width migration 000097 provisions. Changing it requires a matching migration.
+	MaxResults          int     `json:"max_results,omitempty"`          // default 6
+	MaxChunkLen         int     `json:"max_chunk_len,omitempty"`        // default 1000
+	ChunkOverlap        int     `json:"chunk_overlap,omitempty"`        // overlap chars between chunks (default 200)
+	VectorWeight        float64 `json:"vector_weight,omitempty"`        // hybrid search vector weight (default 0.7)
+	TextWeight          float64 `json:"text_weight,omitempty"`          // hybrid search FTS weight (default 0.3)
+	MinScore            float64 `json:"min_score,omitempty"`            // minimum relevance score (default 0.35)
 
 	// Dreaming configures the episodic → long-term consolidation worker.
 	// nil = use hardcoded defaults (threshold=5, debounce=10min, enabled).

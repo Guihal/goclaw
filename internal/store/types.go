@@ -41,6 +41,10 @@ type StoreConfig struct {
 	// BuiltinSkillsDir is the builtin skills directory (bundled with binary).
 	BuiltinSkillsDir string
 
+	// EmbeddingDims is the effective embedding dimension count (from MemoryConfig).
+	// Templated into SQL: vector(N) on writes, halfvec(N) on the indexed reads.
+	EmbeddingDims int
+
 	// EncryptionKey is the AES-256 key for encrypting sensitive data (API keys).
 	// If empty, sensitive data is stored in plain text.
 	EncryptionKey string

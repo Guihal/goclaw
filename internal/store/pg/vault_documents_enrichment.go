@@ -59,7 +59,7 @@ func (s *PGVaultStore) UpdateSummaryAndReembed(ctx context.Context, tenantID, do
 	var embStr *string
 	if s.embProvider != nil {
 		embedText := title + " " + path + " " + summary
-		vecs, embErr := s.embProvider.Embed(ctx, []string{embedText})
+		vecs, embErr := s.embProvider.Embed(ctx, []string{embedText}, store.EmbedInputPassage)
 		if embErr == nil && len(vecs) > 0 {
 			v := vectorToString(vecs[0])
 			embStr = &v
@@ -102,9 +102,11 @@ func (s *PGVaultStore) FindSimilarDocs(ctx context.Context, tenantID, agentID, d
 		return nil, nil // no embedding = no neighbors
 	}
 
+	dims := s.resolvedDims()
+	hv := fmt.Sprintf("halfvec(%d)", dims)
 	q := `SELECT id, tenant_id, agent_id, team_id, chat_id, scope, custom_scope, path, path_basename, title, doc_type,
 			content_hash, summary, metadata, created_at, updated_at,
-			1 - (embedding <=> $1::vector) AS score
+			1 - (embedding::` + hv + ` <=> $1::` + hv + `) AS score
 		FROM vault_documents
 		WHERE tenant_id = $2 AND id != $3 AND embedding IS NOT NULL`
 	args := []any{*embStr, tid, did}
@@ -115,7 +117,7 @@ func (s *PGVaultStore) FindSimilarDocs(ctx context.Context, tenantID, agentID, d
 		args = append(args, *aid)
 		p++
 	}
-	q += fmt.Sprintf(" ORDER BY embedding <=> $1::vector LIMIT $%d", p)
+	q += fmt.Sprintf(" ORDER BY embedding::"+hv+" <=> $1::"+hv+" LIMIT $%d", p)
 	args = append(args, limit)
 
 	var scanned []vaultSearchRow

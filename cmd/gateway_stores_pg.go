@@ -35,6 +35,7 @@ func setupStoresAndTracing(
 		PostgresDSN:      cfg.Database.PostgresDSN,
 		EncryptionKey:    os.Getenv("GOCLAW_ENCRYPTION_KEY"),
 		SkillsStorageDir: filepath.Join(dataDir, "skills-store"),
+		EmbeddingDims:    resolvedEmbeddingDims(cfg),
 	}
 	pgStores, pgErr := pg.NewPGStores(storeCfg)
 	if pgErr != nil {

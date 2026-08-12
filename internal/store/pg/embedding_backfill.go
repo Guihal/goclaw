@@ -33,7 +33,7 @@ func processEmbeddingBackfillBatch[T any](
 		texts[i] = item.text
 	}
 
-	embeddings, batchErr := provider.Embed(ctx, texts)
+	embeddings, batchErr := provider.Embed(ctx, texts, store.EmbedInputPassage)
 	if batchErr == nil {
 		batchErr = validateEmbeddingBatch(embeddings, len(items))
 	}
@@ -49,7 +49,7 @@ func processEmbeddingBackfillBatch[T any](
 	total := 0
 	var rowErrs []error
 	for _, item := range items {
-		embedding, err := provider.Embed(ctx, []string{item.text})
+		embedding, err := provider.Embed(ctx, []string{item.text}, store.EmbedInputPassage)
 		if err == nil {
 			err = validateEmbeddingBatch(embedding, 1)
 		}
@@ -162,10 +162,10 @@ func (s *PGVaultStore) BackfillVaultEmbeddings(ctx context.Context) (int, error)
 		}
 		updated, err := processEmbeddingBackfillBatch(ctx, s.embProvider, "vault document", items,
 			func(ctx context.Context, doc vaultBackfillRow, embedding []float32) (int64, error) {
-				result, err := s.db.ExecContext(ctx, `
-					UPDATE vault_documents SET embedding = $1::vector
+				result, err := s.db.ExecContext(ctx, fmt.Sprintf(`
+					UPDATE vault_documents SET embedding = $1::vector(%d)
 					WHERE id = $2 AND embedding IS NULL
-					  AND title = $3 AND path = $4 AND COALESCE(summary, '') = $5`,
+					  AND title = $3 AND path = $4 AND COALESCE(summary, '') = $5`, s.resolvedDims()),
 					vectorToString(embedding), doc.id, doc.title, doc.path, doc.summary)
 				if err != nil {
 					return 0, err
@@ -240,10 +240,10 @@ func (s *PGEpisodicStore) BackfillEpisodicEmbeddings(ctx context.Context) (int, 
 		}
 		updated, err := processEmbeddingBackfillBatch(ctx, s.embProvider, "episodic summary", items,
 			func(ctx context.Context, summary episodicBackfillRow, embedding []float32) (int64, error) {
-				result, err := s.db.ExecContext(ctx, `
-					UPDATE episodic_summaries SET embedding = $1::vector
+				result, err := s.db.ExecContext(ctx, fmt.Sprintf(`
+					UPDATE episodic_summaries SET embedding = $1::vector(%d)
 					WHERE id = $2 AND embedding IS NULL AND summary = $3
-					  AND (expires_at IS NULL OR expires_at > NOW())`,
+					  AND (expires_at IS NULL OR expires_at > NOW())`, s.resolvedDims()),
 					vectorToString(embedding), summary.id, summary.summary)
 				if err != nil {
 					return 0, err

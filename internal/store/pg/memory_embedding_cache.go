@@ -57,8 +57,90 @@ func (s *PGMemoryStore) lookupEmbeddingCache(ctx context.Context, hashes []strin
 	return result, nil
 }
 
+// EmbeddingColumnDims reports the width the embedding column is actually typed
+// with, read from the catalog rather than assumed. memory_chunks stands in for
+// every embedding column: migration 000097 moves them as one unit.
+// Returns 0 when the column carries no width (an untyped `vector`).
+func (s *PGMemoryStore) EmbeddingColumnDims(ctx context.Context) (int, error) {
+	var typmod int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT a.atttypmod
+		FROM pg_attribute a
+		WHERE a.attrelid = 'memory_chunks'::regclass AND a.attname = 'embedding'`,
+	).Scan(&typmod)
+	if err != nil {
+		return 0, fmt.Errorf("read embedding column width: %w", err)
+	}
+	if typmod < 0 {
+		return 0, nil
+	}
+	return typmod, nil
+}
+
+// PurgeEmbeddingCache deletes every cached vector and returns the row count.
+// Called when the embedding identity (provider/model/dimensions) changes:
+// cache rows carry no provenance beyond (hash, provider, model), so vectors of
+// a stale dimension would be replayed into a column typed for the new one.
+// Intentionally cross-tenant — the identity is process-wide, not per tenant.
+func (s *PGMemoryStore) PurgeEmbeddingCache(ctx context.Context) (int64, error) {
+	res, err := s.db.ExecContext(ctx, "DELETE FROM embedding_cache")
+	if err != nil {
+		return 0, fmt.Errorf("purge embedding cache: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// embeddingTables lists every table holding a persisted vector produced by the
+// embedding provider. Must stay in step with the ALTER TABLE list in migration
+// 000097: a table that can hold a vector but is missing here keeps vectors of a
+// retired model forever, which is worse than having none.
+var embeddingTables = []string{
+	"memory_chunks",
+	"skills",
+	"agents",
+	"team_tasks",
+	"kg_entities",
+	"episodic_summaries",
+	"vault_documents",
+}
+
+// InvalidateEmbeddings nulls every persisted vector and returns the row count.
+//
+// Called when the embedding identity changes without a migration: the stored
+// vectors came from a different model, so a cosine distance against a new query
+// vector is a meaningless number that still sorts, which is why they must go
+// rather than be left to degrade quietly. Source text is untouched, so the
+// backfill workers rebuild them. One transaction: a half-invalidated corpus
+// mixes two models in one index, exactly the state this prevents.
+// Intentionally cross-tenant — the identity is process-wide, not per tenant.
+func (s *PGMemoryStore) InvalidateEmbeddings(ctx context.Context) (int64, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("invalidate embeddings: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var total int64
+	for _, table := range embeddingTables {
+		res, err := tx.ExecContext(ctx, "UPDATE "+table+" SET embedding = NULL WHERE embedding IS NOT NULL")
+		if err != nil {
+			return 0, fmt.Errorf("invalidate embeddings in %s: %w", table, err)
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("invalidate embeddings in %s: rows affected: %w", table, err)
+		}
+		total += affected
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("invalidate embeddings: commit: %w", err)
+	}
+	return total, nil
+}
+
 // writeEmbeddingCache batch-upserts embedding cache entries.
-// Gracefully skips on dimension mismatch (schema uses vector(1536)).
+// Gracefully skips on dimension mismatch against the configured vector width.
 func (s *PGMemoryStore) writeEmbeddingCache(ctx context.Context, entries []embeddingCacheEntry, provider, model string) error {
 	if len(entries) == 0 {
 		return nil
@@ -66,6 +148,7 @@ func (s *PGMemoryStore) writeEmbeddingCache(ctx context.Context, entries []embed
 
 	now := time.Now()
 	tenantID := tenantIDForInsert(ctx)
+	dims := s.resolvedDims()
 
 	// Process in batches of 100 to avoid exceeding max query params
 	const batchSize = 100
@@ -81,8 +164,8 @@ func (s *PGMemoryStore) writeEmbeddingCache(ctx context.Context, entries []embed
 				sb.WriteByte(',')
 			}
 			base := i * 7
-			fmt.Fprintf(&sb, "($%d,$%d,$%d,$%d::vector,$%d,$%d,$%d,$%d)",
-				base+1, base+2, base+3, base+4, base+5, base+6, base+6, base+7)
+			fmt.Fprintf(&sb, "($%d,$%d,$%d,$%d::vector(%d),$%d,$%d,$%d,$%d)",
+				base+1, base+2, base+3, base+4, dims, base+5, base+6, base+6, base+7)
 			args = append(args, e.Hash, provider, model, vectorToString(e.Embedding), len(e.Embedding), now, tenantID)
 		}
 		sb.WriteString(` ON CONFLICT (hash, provider, model) DO UPDATE SET embedding = EXCLUDED.embedding, dims = EXCLUDED.dims, updated_at = EXCLUDED.updated_at`)

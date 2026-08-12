@@ -185,7 +185,7 @@ export function SystemSettingsModal({ open, onOpenChange }: SystemSettingsModalP
               embMaxChunkLen={embMaxChunkLen} setEmbMaxChunkLen={setEmbMaxChunkLen}
               embChunkOverlap={embChunkOverlap} setEmbChunkOverlap={setEmbChunkOverlap}
               extraModels={embExtraModels}
-              onVerify={() => { if (selectedEmbProviderData) verifyEmbedding(selectedEmbProviderData.id, embModel.trim() || undefined, 1536); }}
+              onVerify={() => { if (selectedEmbProviderData) verifyEmbedding(selectedEmbProviderData.id, embModel.trim() || undefined); }}
               verifying={embVerifying} verifyResult={embResult}
               canVerify={!!selectedEmbProviderData && !!embModel.trim()}
             />

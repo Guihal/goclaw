@@ -12,7 +12,7 @@ import (
 
 type fakeEmbedder map[string][]float32
 
-func (f fakeEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
+func (f fakeEmbedder) Embed(_ context.Context, texts []string, _ string) ([][]float32, error) {
 	out := make([][]float32, 0, len(texts))
 	for _, text := range texts {
 		var vec []float32

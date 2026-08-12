@@ -15,11 +15,25 @@ import (
 
 // PGAgentLinkStore implements store.AgentLinkStore backed by Postgres.
 type PGAgentLinkStore struct {
-	db *sql.DB
+	db            *sql.DB
+	embeddingDims int
 }
 
 func NewPGAgentLinkStore(db *sql.DB) *PGAgentLinkStore {
 	return &PGAgentLinkStore{db: db}
+}
+
+func (s *PGAgentLinkStore) SetEmbeddingDims(dims int) {
+	if dims > 0 {
+		s.embeddingDims = dims
+	}
+}
+
+func (s *PGAgentLinkStore) resolvedDims() int {
+	if s.embeddingDims > 0 {
+		return s.embeddingDims
+	}
+	return store.RequiredMemoryEmbeddingDimensions
 }
 
 const linkSelectCols = `id, source_agent_id, target_agent_id, direction, team_id, description,
@@ -314,6 +328,8 @@ func (s *PGAgentLinkStore) SearchDelegateTargetsByEmbedding(ctx context.Context,
 	}
 	vecStr := vectorToString(embedding)
 	tenantFilter, args := delegateTenantArgs(ctx, fromAgentID, vecStr, limit)
+	dims := s.resolvedDims()
+	hv := fmt.Sprintf("halfvec(%d)", dims)
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT `+linkSelectColsJoined+`,
 		 CASE WHEN l.source_agent_id = $1 THEN sa.agent_key ELSE ta.agent_key END AS source_agent_key,
@@ -337,7 +353,7 @@ func (s *PGAgentLinkStore) SearchDelegateTargetsByEmbedding(ctx context.Context,
 		     (l.target_agent_id = $1 AND l.direction IN ('inbound', 'bidirectional'))
 		   )
 		   AND CASE WHEN l.source_agent_id = $1 THEN ta.embedding ELSE sa.embedding END IS NOT NULL
-		 ORDER BY (CASE WHEN l.source_agent_id = $1 THEN ta.embedding ELSE sa.embedding END) <=> $2::vector
+		 ORDER BY (CASE WHEN l.source_agent_id = $1 THEN ta.embedding ELSE sa.embedding END)::`+hv+` <=> $2::`+hv+`
 		 LIMIT $3`, args...)
 	if err != nil {
 		return nil, err
