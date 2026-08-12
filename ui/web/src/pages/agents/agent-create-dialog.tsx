@@ -124,9 +124,12 @@ export function AgentCreateDialog({ open, onOpenChange, onCreate }: AgentCreateD
     setValue("model", "", { shouldValidate: false });
   };
 
+  // Description is optional on purpose: the schema marks it optional, the field
+  // carries no required marker, and its hint promises that an empty value falls
+  // back to templates. Gating the button on it made every one of those a lie —
+  // the dialog silently refused to submit with no error to explain why.
   const canCreate = !!agentKey && !!displayName && !!provider && !!model &&
-    !errors.agentKey && !errors.displayName &&
-    !!watch("description")?.trim();
+    !errors.agentKey && !errors.displayName;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
